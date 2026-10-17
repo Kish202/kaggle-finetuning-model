@@ -112,6 +112,19 @@ def stylometry(texts) -> pd.DataFrame:
     return pd.DataFrame([_stylometry_row(t) for t in texts])
 
 
+def prompt_relative(style: np.ndarray, groups: np.ndarray) -> np.ndarray:
+    """Express each passage's style relative to the other answers to the same
+    prompt (group). Cancels prompt-level effects (e.g. a creative prompt makes
+    every model use more dashes) so what's left is the model's own habit.
+
+    Returns [raw | raw - group_mean | within-group percentile rank]."""
+    df = pd.DataFrame(style)
+    g = df.groupby(groups)
+    rel = (df - g.transform("mean")).values
+    rank = g.rank(pct=True).values
+    return np.hstack([style, rel, rank]).astype(np.float32)
+
+
 class StyleFeaturizer:
     """fit/transform wrapper that returns one combined sparse matrix."""
 
