@@ -11,6 +11,7 @@ Three feature groups, each a sparse matrix, concatenated:
 
 import re
 import string
+from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,8 @@ from sklearn.preprocessing import StandardScaler
 
 _SENT_SPLIT = re.compile(r"(?<=[.!?])\s+")
 _WORD = re.compile(r"[A-Za-z']+")
+_CONTRACTION = re.compile(r"\w[’']\w")
+_PUNCT_SET = frozenset(string.punctuation)
 
 PUNCT_CHARS = {
     "em_dash": "—",
@@ -61,14 +64,14 @@ def _stylometry_row(text: str) -> dict:
     sents = [s for s in _SENT_SPLIT.split(text.strip()) if s]
     sent_lens = np.array([len(_WORD.findall(s)) for s in sents]) if sents else np.array([n_words])
     word_lens = np.array([len(w) for w in words]) if words else np.array([0])
-    lower = text.lower()
     lower_words = [w.lower() for w in words]
+    counts = Counter(lower_words)  # single pass; reused for hapax + function words
 
     f = {}
     # punctuation per 100 words
     for name, ch in PUNCT_CHARS.items():
         f[f"p_{name}"] = 100.0 * text.count(ch) / n_words
-    f["p_any_punct"] = 100.0 * sum(c in string.punctuation for c in text) / n_words
+    f["p_any_punct"] = 100.0 * sum(c in _PUNCT_SET for c in text) / n_words
     f["p_non_ascii"] = 100.0 * sum(ord(c) > 127 for c in text) / n_words
     f["p_digits"] = 100.0 * sum(c.isdigit() for c in text) / n_words
     f["p_upper"] = 100.0 * sum(c.isupper() for c in text) / n_chars
@@ -86,8 +89,8 @@ def _stylometry_row(text: str) -> dict:
     f["short_word_rate"] = (word_lens <= 3).mean()
 
     # lexical diversity
-    f["ttr"] = len(set(lower_words)) / n_words
-    f["hapax_rate"] = sum(1 for w, c in pd.Series(lower_words).value_counts().items() if c == 1) / n_words
+    f["ttr"] = len(counts) / n_words
+    f["hapax_rate"] = sum(1 for c in counts.values() if c == 1) / n_words
 
     # starting / ending habits
     f["starts_with_quote"] = float(text[:1] in "\"“'")
@@ -97,12 +100,11 @@ def _stylometry_row(text: str) -> dict:
     f["first_word_i"] = float(lower_words[:1] == ["i"])
 
     # contractions and dialogue
-    f["contraction_rate"] = 100.0 * len(re.findall(r"\w[’']\w", text)) / n_words
+    f["contraction_rate"] = 100.0 * len(_CONTRACTION.findall(text)) / n_words
     f["dash_spaced"] = text.count(" — ") + text.count(" - ")
     f["dash_tight"] = text.count("—") - text.count(" — ")
 
     # function word rates
-    counts = pd.Series(lower_words).value_counts()
     for w in FUNCTION_WORDS:
         f[f"fw_{w}"] = 100.0 * counts.get(w, 0) / n_words
     return f

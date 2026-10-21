@@ -47,7 +47,8 @@ def main():
 
     # precompute dense style features once (they don't depend on the fold)
     t0 = time.time()
-    style_all = stylometry(train.text).values.astype(np.float32)
+    style_df = stylometry(train.text)
+    style_all = style_df.values.astype(np.float32)
     print(f"style features: {style_all.shape}  ({time.time()-t0:.0f}s)")
 
     oof_tfidf = np.zeros((len(train), k), dtype=np.float32)
@@ -105,7 +106,7 @@ def main():
         l2_regularization=1.0, class_weight="balanced", random_state=42,
     ).fit(style_all, y)
     from sklearn.inspection import permutation_importance
-    names = stylometry(train.text.iloc[:5]).columns
+    names = style_df.columns
     sub = np.random.RandomState(0).choice(len(train), 600, replace=False)
     pi = permutation_importance(hgb, style_all[sub], y[sub], n_repeats=3, random_state=0, scoring="balanced_accuracy")
     imp = pd.Series(pi.importances_mean, index=names).sort_values(ascending=False)
